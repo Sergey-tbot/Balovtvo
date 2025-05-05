@@ -23,12 +23,21 @@ class DataStorage:
             return
         tree = ET.parse(file_path)
         root = tree.getroot()
+
         for category in root.findall('category'):
             cat_name = category.get('name')
             if cat_name not in self.data:
                 continue
             for elem in category.findall('item'):
                 item_id = elem.get('id') or str(uuid.uuid4())
+                outputs = []
+                outputs_elem = elem.find('outputs')
+                if outputs_elem is not None:
+                    for out in outputs_elem.findall('output'):
+                        out_id = out.get('id') or str(uuid.uuid4())
+                        out_name = out.find('name').text if out.find('name') is not None else ''
+                        qty = out.find('quantity').text if out.find('quantity') is not None else ''
+                        outputs.append({'id': out_id, 'name': out_name, 'quantity': qty})
                 name = elem.find('name').text if elem.find('name') is not None else ''
                 price_min = elem.find('price_min').text if elem.find('price_min') is not None else ''
                 price_max = elem.find('price_max').text if elem.find('price_max') is not None else ''
@@ -52,18 +61,27 @@ class DataStorage:
                     'materials': materials,
                     'output_per_cycle': output_per_cycle,
                     'cycles_per_day': cycles_per_day,
-                    'production_cost_per_day': production_cost_per_day
+                    'production_cost_per_day': production_cost_per_day,
+                    'outputs': outputs
                 })
+
 
     def save_data(self):
         root = ET.Element('data')
+
         for cat_name, items in self.data.items():
             cat_elem = ET.SubElement(root, 'category', {'name': cat_name})
             for item in items:
+
                 item_elem = ET.SubElement(cat_elem, 'item', {'id': item['id']})
                 ET.SubElement(item_elem, 'name').text = item['name']
                 ET.SubElement(item_elem, 'price_min').text = item['price_min']
                 ET.SubElement(item_elem, 'price_max').text = item['price_max']
+                outputs_elem = ET.SubElement(item_elem, 'outputs')
+                for out in item.get('outputs', []):
+                    out_elem = ET.SubElement(outputs_elem, 'output', {'id': out['id']})
+                    ET.SubElement(out_elem, 'name').text = out['name']
+                    ET.SubElement(out_elem, 'quantity').text = out['quantity']
                 if cat_name == 'derived':
                     ET.SubElement(item_elem, 'output_per_cycle').text = item.get('output_per_cycle', '')
                     ET.SubElement(item_elem, 'cycles_per_day').text = item.get('cycles_per_day', '')
@@ -82,3 +100,11 @@ class DataStorage:
                 if item['id'] == mat_id:
                     return item
         return None
+
+    def is_used_as_material(self, mat_id):
+        """Проверяет, используется ли материал mat_id как сырье в других производных."""
+        for item in self.data['derived']:
+            for mat in item.get('materials', []):
+                if mat['id'] == mat_id:
+                    return True
+        return False

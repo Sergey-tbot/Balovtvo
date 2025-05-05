@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from basic_windows import BasicWindow
 from product_windows import ProductWindow
-from data_storage import DataStorage  # общий модуль для загрузки/сохранения данных
+from data_storage import DataStorage
 
 
 class MainWindow:
@@ -74,48 +74,65 @@ class MainWindow:
 
     def calculate_profit(self, item):
         try:
-            price_avg = (float(item['price_min']) + float(item['price_max'])) / 2 / 1000
-            output_per_cycle = float(item.get('output_per_cycle', 0))
-            cycles_per_day = float(item.get('cycles_per_day', 0))
-            production_cost_per_day = float(item.get('production_cost_per_day', 0))
-
-            total_output_per_day = output_per_cycle * cycles_per_day
-
-            # Выручка за день
-            revenue = price_avg * total_output_per_day
-
-            # Себестоимость материалов за цикл
-            cost_materials_per_cycle = 0.0
-            for mat in item['materials']:
-                mat_data = self.data_storage.find_material(mat['id'])
-                if not mat_data:
-                    continue
-                qty = float(mat.get('quantity', 0))
-                price_min = (float(mat_data['price_min']) + float(mat_data['price_max'])) / 2 / 1000
-                cost_materials_per_cycle += price_min * qty
-
-            # Себестоимость материалов за день
-            cost_materials_per_day = cost_materials_per_cycle * cycles_per_day
-
-            # Общая себестоимость за день = материалы + стоимость производства в день
-            total_cost_per_day = cost_materials_per_day + production_cost_per_day
-
-            profit = revenue - total_cost_per_day
-
-            return f"{profit:.2f}"
+            total_cost, total_revenue = self.calculate_total_cost_revenue(item['id'])
+            return f"{total_revenue - total_cost:.2f}"
         except Exception as e:
             print(f"Error calculating profit: {e}")
             return "N/A"
 
+    def calculate_total_cost_revenue(self, product_id, multiplier=1.0):
+        product = self.data_storage.find_material(product_id)
+        if not product:
+            return 0.0, 0.0
+
+        try:
+            cycles_per_day = float(product.get('cycles_per_day', 0))
+            production_cost_per_day = float(product.get('production_cost_per_day', 0))
+        except Exception:
+            cycles_per_day = 0
+            production_cost_per_day = 0
+
+        # Себестоимость материалов (сырья)
+        cost_materials = 0.0
+        for mat in product.get('materials', []):
+            mat_id = mat['id']
+            try:
+                qty = float(mat.get('quantity', 0)) * multiplier
+            except Exception:
+                qty = 0
+            mat_cost, _ = self.calculate_total_cost_revenue(mat_id, qty)
+            cost_materials += mat_cost
+
+        # Себестоимость производства (стоимость в день)
+        production_cost_total = production_cost_per_day * multiplier
+
+        total_cost = cost_materials + production_cost_total
+
+        # Доход от всех выходных продуктов
+        total_revenue = 0.0
+        for output in product.get('outputs', []):
+            try:
+                qty_out = float(output.get('quantity', 0)) * cycles_per_day * multiplier
+            except Exception:
+                qty_out = 0
+            out_data = self.data_storage.find_material(output['id'])
+            if not out_data:
+                continue
+            try:
+                price_avg = (float(out_data.get('price_min', 0)) + float(out_data.get('price_max', 0))) / 2 / 1000
+            except Exception:
+                price_avg = 0
+            total_revenue += price_avg * qty_out
+
+        return total_cost, total_revenue
+
     def get_material_cost(self, material):
         mat_id = material.get('id')
         if not mat_id:
-            print(f"Warning: material without 'id': {material}")
             return 0
         mat_data = self.data_storage.find_material(mat_id)
         if not mat_data:
             return 0
-        # Цена за одну единицу
         price_avg = (float(mat_data['price_min']) + float(mat_data['price_max'])) / 2 / 1000
         quantity = float(material.get('quantity', 0))
         return price_avg * quantity
@@ -133,7 +150,6 @@ class MainWindow:
             return
         row_id = tree.identify_row(event.y)
         col = tree.identify_column(event.x)
-        # Колонка "Действие" - 4-я для basic, 5-я для derived
         expected_col = '#4' if cat_key == 'basic' else '#5'
         if col == expected_col and row_id:
             if cat_key == 'basic':
@@ -147,6 +163,28 @@ class MainWindow:
     def open_product_add(self):
         ProductWindow(self.root, self.data_storage, None, self.refresh_table)
 
+    def get_all_materials(self, materials, parent_multiplier=1.0, depth=0, max_depth=10):
+        if depth > max_depth:
+            return []
+        all_mats = []
+        for mat in materials:
+            mat_data = self.data_storage.find_material(mat['id'])
+            if not mat_data:
+                continue
+            try:
+                qty_per_cycle = float(mat.get('quantity', 0))
+            except Exception:
+                qty_per_cycle = 0.0
+            total_qty = qty_per_cycle * parent_multiplier
+            all_mats.append({
+                'id': mat_data['id'],
+                'name': '  ' * depth + mat_data['name'],
+                'quantity': total_qty
+            })
+            if mat_data.get('materials'):
+                all_mats.extend(self.get_all_materials(mat_data['materials'], total_qty, depth + 1, max_depth))
+        return all_mats
+
     def on_derived_select(self, event):
         item_id = self.tree_derived.selection()[0] if self.tree_derived.selection() else None
         if not item_id:
@@ -156,13 +194,18 @@ class MainWindow:
         if not item:
             return
 
-        all_materials = self.get_all_materials(item['materials'])
+        try:
+            cycles_per_day = float(item.get('cycles_per_day', 1))
+        except Exception:
+            cycles_per_day = 1.0
+
+        all_materials = self.get_all_materials(item['materials'], parent_multiplier=cycles_per_day)
 
         text = f"Ресурс: {item['name']}\n"
-        text += f"Выход в день: {float(item.get('output_per_cycle', 0)) * float(item.get('cycles_per_day', 0)):.2f}\n"
+        text += f"Выход в день: {float(item.get('output_per_cycle', 0)) * cycles_per_day:.2f}\n"
         text += "Используемые материалы:\n"
         for mat in all_materials:
-            text += f"- {mat['name']}: {mat['quantity']} ед. (Стоимость: {self.get_material_cost(mat):.2f}/день)\n"
+            text += f"- {mat['name']}: {mat['quantity']:.2f} ед. (Стоимость: {self.get_material_cost(mat):.2f}/день)\n"
 
         try:
             profit = float(self.calculate_profit(item))
@@ -175,39 +218,6 @@ class MainWindow:
         self.summary_text.insert(tk.END, text)
         self.summary_text.config(state='disabled')
 
-    def get_all_materials(self, materials, depth=0, max_depth=10):
-        if depth > max_depth:
-            return []
-        all_mats = []
-        for mat in materials:
-            mat_data = self.data_storage.find_material(mat['id'])
-            if not mat_data:
-                continue
-            quantity = 0.0
-            try:
-                quantity = float(mat.get('quantity', 0))
-            except:
-                quantity = 0.0
-            cycles = 1.0
-            try:
-                cycles = float(mat_data.get('cycles_per_day', 1))
-            except:
-                cycles = 1.0
-            total_quantity = quantity * cycles
-            all_mats.append({
-                'id': mat_data['id'],
-                'name': '  ' * depth + mat_data['name'],
-                'quantity': total_quantity
-            })
-            if 'materials' in mat_data:
-                all_mats.extend(self.get_all_materials(mat_data['materials'], depth + 1, max_depth))
-        return all_mats
-
-def safe_float(value, default=0.0):
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
 
 if __name__ == "__main__":
     root = tk.Tk()
