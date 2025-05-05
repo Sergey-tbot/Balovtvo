@@ -67,7 +67,7 @@ class MainWindow:
         if not item_id:
             return
 
-        item = next((x for x in self.data_storage.data['derived'] if x['id'] == item_id), None)
+        item = next((x for x in self.data_storage.data['derived'] if str(x['id']) == item_id), None)
         if not item:
             return
 
@@ -117,7 +117,7 @@ class MainWindow:
         items = self.data_storage.data[cat_key]
         for item in items:
             profit = self.calculate_profit(item) if cat_key == 'derived' else ''
-            tree.insert('', 'end', iid=item['id'],
+            tree.insert('', 'end', iid=str(item['id']),
                         values=(item['name'], item['price_min'], item['price_max'], profit, 'Редактировать'))
 
     def calculate_profit(self, item):
@@ -132,11 +132,15 @@ class MainWindow:
             return "N/A"
 
     def get_material_cost(self, material):
-        mat_data = self.data_storage.find_material(material['id'])
+        mat_id = material.get('id')
+        if not mat_id:
+            print(f"Warning: material without 'id': {material}")
+            return 0
+        mat_data = self.data_storage.find_material(mat_id)
         if not mat_data:
             return 0
         price_avg = (float(mat_data['price_min']) + float(mat_data['price_max'])) / 2 / 1000
-        return price_avg * float(material['quantity'])
+        return price_avg * float(material.get('quantity', 0))
 
     def on_basic_click(self, event):
         self._on_tree_click(event, 'basic')

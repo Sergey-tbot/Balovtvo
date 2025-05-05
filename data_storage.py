@@ -44,6 +44,8 @@ class DataStorage:
                     if mats_elem is not None:
                         for mat in mats_elem.findall('material'):
                             mat_id = mat.get('id')
+                            if not mat_id:
+                                mat_id = str(uuid.uuid4())  # Генерируем новый id, если отсутствует
                             mat_name = mat.find('name').text if mat.find('name') is not None else ''
                             qty = mat.find('quantity').text if mat.find('quantity') is not None else ''
                             materials.append({'id': mat_id, 'name': mat_name, 'quantity': qty})
