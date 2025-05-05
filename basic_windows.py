@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import uuid
 
+
 class BasicWindow:
     def __init__(self, master, data_storage, item_id, refresh_callback):
         self.master = master
@@ -54,14 +55,12 @@ class BasicWindow:
             return
 
         if self.item_id:
-            # Редактирование
             item = next((x for x in self.data_storage.data['basic'] if x['id'] == self.item_id), None)
             if item:
                 item['name'] = name
                 item['price_min'] = price_min
                 item['price_max'] = price_max
         else:
-            # Добавление
             new_id = str(uuid.uuid4())
             self.data_storage.data['basic'].append({
                 'id': new_id,

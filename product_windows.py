@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 import uuid
+
 
 class ProductWindow:
     def __init__(self, master, data_storage, item_id, refresh_callback):
@@ -29,7 +30,6 @@ class ProductWindow:
         self.entry_price_max = tk.Entry(left_frame, width=30)
         self.entry_price_max.grid(row=2, column=1, padx=5, pady=5)
 
-        # Новые поля
         tk.Label(left_frame, text="Кол-во на цикл:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
         self.entry_output_per_cycle = tk.Entry(left_frame, width=30)
         self.entry_output_per_cycle.grid(row=3, column=1, padx=5, pady=5)
@@ -42,15 +42,18 @@ class ProductWindow:
         self.entry_production_cost_per_day = tk.Entry(left_frame, width=30)
         self.entry_production_cost_per_day.grid(row=5, column=1, padx=5, pady=5)
 
-        # Материалы
-        tk.Label(left_frame, text="Используемые материалы:").grid(row=6, column=0, columnspan=2, pady=(10,0))
+        # Таблица материалов с колонкой "Действие"
+        tk.Label(left_frame, text="Используемые материалы:").grid(row=6, column=0, columnspan=2, pady=(10, 0))
 
-        self.materials_tree = ttk.Treeview(left_frame, columns=('Материал', 'Количество'), show='headings', height=8)
+        self.materials_tree = ttk.Treeview(left_frame, columns=('Материал', 'Количество', 'Действие'), show='headings', height=8)
         self.materials_tree.heading('Материал', text='Материал')
         self.materials_tree.heading('Количество', text='Количество')
+        self.materials_tree.heading('Действие', text='Действие')
         self.materials_tree.column('Материал', width=150)
         self.materials_tree.column('Количество', width=100, anchor='center')
+        self.materials_tree.column('Действие', width=100, anchor='center')
         self.materials_tree.grid(row=7, column=0, columnspan=2, padx=5, pady=5)
+        self.materials_tree.bind('<Button-1>', self.on_materials_tree_click)
 
         btn_frame = tk.Frame(left_frame)
         btn_frame.grid(row=8, column=0, columnspan=2, pady=5)
@@ -70,7 +73,6 @@ class ProductWindow:
         btn_delete_resource = tk.Button(left_frame, text="Удалить ресурс", fg='red', command=self.on_delete_resource)
         btn_delete_resource.grid(row=9, column=1, pady=10)
 
-        # Правая часть - статистика
         right_frame = tk.Frame(self.window)
         right_frame.grid(row=0, column=1, sticky='nsew', padx=10, pady=10)
 
@@ -110,63 +112,21 @@ class ProductWindow:
     def refresh_materials_table(self):
         self.materials_tree.delete(*self.materials_tree.get_children())
         for mat in self.materials:
-            self.materials_tree.insert('', 'end', iid=mat['id'], values=(mat['name'], mat['quantity']))
+            self.materials_tree.insert('', 'end', iid=mat['id'], values=(mat['name'], mat['quantity'], 'Редактировать'))
         self.update_statistics()
 
-    def on_add_material(self):
-        # Объединяем базовые и производные материалы для выбора
-        all_materials = self.data_storage.data['basic'] + self.data_storage.data['derived']
-        if self.item_id is not None:
-            all_materials = [m for m in all_materials if m['id'] != self.item_id]
-        material_names = [m['name'] for m in all_materials]
-
-        def on_material_ok():
-            sel_index = combo_material.current()
-            if sel_index == -1:
-                messagebox.showwarning("Ошибка", "Выберите материал")
-                return
-            qty = entry_quantity.get().strip()
-            if not qty:
-                messagebox.showwarning("Ошибка", "Введите количество")
-                return
-            mat = all_materials[sel_index]
-            # Проверяем, есть ли уже такой материал, если да - обновляем количество
-            for m in self.materials:
-                if m['id'] == mat['id']:
-                    m['quantity'] = qty
-                    self.refresh_materials_table()
-                    add_mat_window.destroy()
-                    return
-            # Добавляем новый
-            self.materials.append({'id': mat['id'], 'name': mat['name'], 'quantity': qty})
-            self.refresh_materials_table()
-            add_mat_window.destroy()
-
-        add_mat_window = tk.Toplevel(self.window)
-        add_mat_window.title("Добавить материал")
-        add_mat_window.grab_set()
-
-        tk.Label(add_mat_window, text="Материал:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
-        combo_material = ttk.Combobox(add_mat_window, values=material_names, state='readonly')
-        combo_material.grid(row=0, column=1, padx=5, pady=5)
-        combo_material.current(0)
-
-        tk.Label(add_mat_window, text="Количество:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
-        entry_quantity = tk.Entry(add_mat_window, width=20)
-        entry_quantity.grid(row=1, column=1, padx=5, pady=5)
-
-        btn_ok = tk.Button(add_mat_window, text="ОК", command=on_material_ok)
-        btn_ok.grid(row=2, column=0, columnspan=2, pady=10)
-
-    def on_edit_material(self):
-        selected = self.materials_tree.selection()
-        if not selected:
-            messagebox.showwarning("Ошибка", "Выберите материал для редактирования")
+    def on_materials_tree_click(self, event):
+        region = self.materials_tree.identify('region', event.x, event.y)
+        if region != 'cell':
             return
-        mat_id = selected[0]
+        row_id = self.materials_tree.identify_row(event.y)
+        col = self.materials_tree.identify_column(event.x)
+        if col == '#3' and row_id:  # Колонка "Действие"
+            self.edit_material(row_id)
+
+    def edit_material(self, mat_id):
         mat = next((m for m in self.materials if m['id'] == mat_id), None)
         if not mat:
-            messagebox.showerror("Ошибка", "Материал не найден")
             return
 
         def on_save():
@@ -192,6 +152,79 @@ class ProductWindow:
         btn_save = tk.Button(edit_win, text="Сохранить", command=on_save)
         btn_save.grid(row=2, column=0, columnspan=2, pady=10)
 
+    def on_add_material(self):
+        all_materials = self.data_storage.data['basic'] + self.data_storage.data['derived']
+        if self.item_id is not None:
+            all_materials = [m for m in all_materials if m['id'] != self.item_id]
+        material_names = [m['name'] for m in all_materials]
+
+        def on_material_ok():
+            sel_index = combo_material.current()
+            if sel_index == -1:
+                messagebox.showwarning("Ошибка", "Выберите материал")
+                return
+            qty = entry_quantity.get().strip()
+            if not qty:
+                messagebox.showwarning("Ошибка", "Введите количество")
+                return
+            mat = all_materials[sel_index]
+            for m in self.materials:
+                if m['id'] == mat['id']:
+                    m['quantity'] = qty
+                    self.refresh_materials_table()
+                    add_mat_window.destroy()
+                    return
+            self.materials.append({'id': mat['id'], 'name': mat['name'], 'quantity': qty})
+            self.refresh_materials_table()
+            add_mat_window.destroy()
+
+        add_mat_window = tk.Toplevel(self.window)
+        add_mat_window.title("Добавить материал")
+        add_mat_window.grab_set()
+
+        tk.Label(add_mat_window, text="Материал:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        combo_material = ttk.Combobox(add_mat_window, values=material_names, state='readonly')
+        combo_material.grid(row=0, column=1, padx=5, pady=5)
+        combo_material.current(0)
+
+        tk.Label(add_mat_window, text="Количество:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        entry_quantity = tk.Entry(add_mat_window, width=20)
+        entry_quantity.grid(row=1, column=1, padx=5, pady=5)
+
+        btn_ok = tk.Button(add_mat_window, text="ОК", command=on_material_ok)
+        btn_ok.grid(row=2, column=0, columnspan=2, pady=10)
+
+    def on_edit_material(self):
+        selected = self.materials_tree.selection()
+        if not selected:
+            messagebox.showwarning("Ошибка", "Выберите материал для редактирования")
+            return
+        self.edit_material(selected[0])
+
+    def on_delete_material(self):
+        selected = self.materials_tree.selection()
+        if not selected:
+            messagebox.showwarning("Ошибка", "Выберите материал для удаления")
+            return
+        mat_id = selected[0]
+        mat = next((m for m in self.materials if m['id'] == mat_id), None)
+        if not mat:
+            messagebox.showerror("Ошибка", "Материал не найден")
+            return
+        if messagebox.askyesno("Подтверждение", f"Удалить материал '{mat['name']}'?"):
+            self.materials = [m for m in self.materials if m['id'] != mat_id]
+            self.refresh_materials_table()
+
+    def on_delete_resource(self):
+        if not self.item_id:
+            self.window.destroy()
+            return
+        if messagebox.askyesno("Подтверждение", "Удалить этот ресурс?"):
+            self.data_storage.data['derived'] = [item for item in self.data_storage.data['derived'] if item['id'] != self.item_id]
+            self.data_storage.save_data()
+            self.refresh_callback('derived')
+            self.window.destroy()
+
     def update_statistics(self):
         def parse_float(s):
             try:
@@ -211,7 +244,6 @@ class ProductWindow:
         cycles_per_day = parse_float(self.entry_cycles_per_day.get())
         production_cost_per_day = parse_float(self.entry_production_cost_per_day.get())
 
-        # Себестоимость материалов за цикл
         for mat in self.materials:
             mat_data = self.find_material_data(mat['id'])
             if not mat_data:
@@ -225,19 +257,14 @@ class ProductWindow:
             max_cost += price_max * qty
             avg_cost += price_avg * qty
 
-        # Себестоимость материалов за день (умножаем на количество циклов)
         min_cost_day = min_cost * cycles_per_day
         max_cost_day = max_cost * cycles_per_day
         avg_cost_day = avg_cost * cycles_per_day
 
-        # Общая себестоимость = себестоимость материалов + стоимость производства в день
         total_min_cost = min_cost_day + production_cost_per_day
         total_max_cost = max_cost_day + production_cost_per_day
         total_avg_cost = avg_cost_day + production_cost_per_day
 
-        # Цена продажи за день (учитывая количество получаемого материала за цикл и циклы)
-        # Предполагаем, что цена продажи указана за единицу товара
-        # Итого продаётся output_per_cycle * cycles_per_day единиц
         total_output_per_day = output_per_cycle * cycles_per_day if output_per_cycle and cycles_per_day else 0
         if total_output_per_day > 0:
             sell_min_day = (min_sell / 1000) * total_output_per_day
@@ -315,29 +342,3 @@ class ProductWindow:
         self.data_storage.save_data()
         self.refresh_callback('derived')
         self.window.destroy()
-
-    def on_delete_material(self):
-        selected = self.materials_tree.selection()
-        if not selected:
-            messagebox.showwarning("Ошибка", "Выберите материал для удаления")
-            return
-        mat_id = selected[0]
-        mat = next((m for m in self.materials if m['id'] == mat_id), None)
-        if not mat:
-            messagebox.showerror("Ошибка", "Материал не найден")
-            return
-        if messagebox.askyesno("Подтверждение", f"Удалить материал '{mat['name']}'?"):
-            self.materials = [m for m in self.materials if m['id'] != mat_id]
-            self.refresh_materials_table()
-
-    def on_delete_resource(self):
-        if not self.item_id:
-            # Если ресурс ещё не сохранён, просто закрываем окно
-            self.window.destroy()
-            return
-        if messagebox.askyesno("Подтверждение", "Удалить этот ресурс?"):
-            self.data_storage.data['derived'] = [item for item in self.data_storage.data['derived'] if
-                                                 item['id'] != self.item_id]
-            self.data_storage.save_data()
-            self.refresh_callback('derived')
-            self.window.destroy()
