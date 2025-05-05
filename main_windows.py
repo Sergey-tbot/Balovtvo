@@ -155,7 +155,12 @@ class MainWindow:
             return
         row_id = tree.identify_row(event.y)
         col = tree.identify_column(event.x)
-        if col == '#4' and row_id:
+        print(f"Clicked row_id: {row_id}, column: {col}")  # Для отладки
+        if col == '#5' and row_id:  # Колонка "Действие" - 5-я колонка, если есть колонка "Прибыль"
+            item = next((x for x in self.data_storage.data[cat_key] if str(x['id']) == row_id), None)
+            if not item:
+                print(f"Элемент с id {row_id} не найден!")
+                return
             if cat_key == 'basic':
                 BasicWindow(self.root, self.data_storage, row_id, self.refresh_table)
             else:
