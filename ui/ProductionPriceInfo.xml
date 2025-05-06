@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<ui>
+    <text name="txtCurrentPrice" position="0 0.1" size="0.03" text="Текущая цена продажи: -" />
+    <text name="txtMaxPrice" position="0 0.05" size="0.03" text="Максимальная цена продажи: -" />
+</ui>

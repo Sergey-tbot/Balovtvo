@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="92">
+    <title>Production Price Info</title>
+    <description>Добавляет отображение текущей и максимальной цены продажи в интерфейс цепочек производства</description>
+    <version>1.0.0.0</version>
+    <author>Ваше Имя</author>
+    <iconFilename>icon_prodcutionInfoHud.png</iconFilename>
+    <scriptFiles>
+        <file>scripts/ProductionPriceInfo.lua</file>
+    </scriptFiles>
+</modDesc>
